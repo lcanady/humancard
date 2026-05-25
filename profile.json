@@ -202,15 +202,17 @@
       "no agentic or autonomous AI systems involved",
       "on-site only with no remote option",
       "large enterprise with 6+ month shipping cycles",
-      "no equity component"
+      "no equity component",
+      "prohibits AI-assisted coding"
     ]
   },
   "scoring_weights": {
-    "uses_mcp_or_a2a_in_production": 25,
-    "crypto_ai_crossover": 20,
-    "founding_or_staff_level": 20,
-    "remote_or_relocation_package": 15,
-    "requires_agentic_production_experience": 15,
+    "allows_ai_augmented_workflow": 25,
+    "uses_mcp_or_a2a_in_production": 20,
+    "founding_or_staff_level": 15,
+    "crypto_ai_crossover": 15,
+    "requires_agentic_production_experience": 10,
+    "remote_or_relocation_package": 10,
     "no_degree_required": 5
   }
 }
