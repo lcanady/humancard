@@ -17,15 +17,12 @@ import type { RawProfile } from "../profile.js";
 import { checkDealbreakers, scoreOpportunity } from "../scoring/engine.js";
 import type { ScoredJob } from "../scoring/types.js";
 import { logger } from "../shared/logger.js";
-import type { JobRaw } from "../shared/types.js";
-import { sendAlert } from "./alert.js";
+import type { CompanySignal, JobRaw } from "../shared/types.js";
+import { sendAlert, sendFundingAlert } from "./alert.js";
+import { fetchAtsJobs } from "./sources/ats.js";
 import { fetchFundingSignals } from "./sources/crunchbase.js";
-import { fetchGitHubHiringSignals } from "./sources/github.js";
 import { fetchHimalayasJobs } from "./sources/himalayas.js";
 import { fetchHackerNewsJobs } from "./sources/hn-rss.js";
-
-/** Per-process ETag cache for GitHub conditional requests. */
-const githubEtags = new Map<string, string>();
 
 /** Concurrency cap for the LLM-backed scoring step. */
 const SCORE_CONCURRENCY = 4;
@@ -105,25 +102,26 @@ export async function runHuntCycle(): Promise<void> {
   const settled = await Promise.allSettled([
     fetchHimalayasJobs({ keywords: config.HUNTER_KEYWORDS }),
     fetchHackerNewsJobs({ keywords: config.HUNTER_KEYWORDS }),
-    fetchGitHubHiringSignals({
-      orgs: config.HUNTER_GITHUB_ORGS,
-      etags: githubEtags,
+    fetchAtsJobs({
+      boards: config.HUNTER_ATS_BOARDS,
+      keywords: config.HUNTER_KEYWORDS,
     }),
     fetchFundingSignals(),
   ]);
 
-  const sourceNames = ["himalayas", "hn-rss", "github", "funding"] as const;
+  const sourceNames = ["himalayas", "hn-rss", "ats", "funding"] as const;
   const collected: JobRaw[] = [];
+  let fundingSignals: CompanySignal[] = [];
   const sourceCounts: Record<string, number> = {};
   for (let i = 0; i < settled.length; i++) {
     const name = sourceNames[i] ?? `source-${i}`;
     const r = settled[i];
     if (r === undefined) continue;
     if (r.status === "fulfilled") {
-      // Funding signals are CompanySignal[], not JobRaw[] — they're surfaced
-      // via logs only for now (no JD to score against), so skip here.
       if (i === 3) {
-        sourceCounts[name] = Array.isArray(r.value) ? r.value.length : 0;
+        const sigs = Array.isArray(r.value) ? (r.value as CompanySignal[]) : [];
+        fundingSignals = sigs;
+        sourceCounts[name] = sigs.length;
         continue;
       }
       const items = r.value as JobRaw[];
@@ -192,7 +190,24 @@ export async function runHuntCycle(): Promise<void> {
     const result = await sendAlert(alertOpts);
     delivered = result.delivered;
     suppressed = result.suppressed;
-  } else if (filtered.length > 0) {
+  }
+
+  let signalDelivered = 0;
+  let signalSuppressed = 0;
+  if (config.WEBHOOK_URL !== undefined && fundingSignals.length > 0) {
+    const fOpts: Parameters<typeof sendFundingAlert>[0] = {
+      webhookUrl: config.WEBHOOK_URL,
+      signals: fundingSignals,
+    };
+    if (config.HUNTER_STATE_FILE !== undefined) {
+      fOpts.stateFile = config.HUNTER_STATE_FILE;
+    }
+    const fr = await sendFundingAlert(fOpts);
+    signalDelivered = fr.delivered;
+    signalSuppressed = fr.suppressed;
+  }
+
+  if (config.WEBHOOK_URL === undefined && filtered.length > 0) {
     logger.info("hunter: matches (no webhook configured)", {
       count: filtered.length,
       top: filtered.slice(0, 5).map((j) => ({
@@ -213,6 +228,8 @@ export async function runHuntCycle(): Promise<void> {
     alertable: filtered.length,
     delivered,
     suppressed,
+    signalDelivered,
+    signalSuppressed,
   });
 }
 
@@ -233,7 +250,7 @@ export async function startHunter(): Promise<void> {
     logger.info("hunter: starting", {
       schedule: config.HUNTER_CRON_SCHEDULE,
       keywords: config.HUNTER_KEYWORDS,
-      orgs: config.HUNTER_GITHUB_ORGS,
+      atsBoards: config.HUNTER_ATS_BOARDS,
       webhook: config.WEBHOOK_URL !== undefined,
     });
 

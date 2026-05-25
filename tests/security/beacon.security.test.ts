@@ -12,6 +12,9 @@ import type { Express } from "express";
 process.env["PORT"] = "3999";
 process.env["BEACON_BASE_URL"] = process.env["BEACON_BASE_URL"] ?? "http://localhost";
 process.env["ALLOWED_HOSTS"] = process.env["ALLOWED_HOSTS"] ?? "localhost,127.0.0.1";
+// Guarantee the SSRF guard is active for the webhook test — the dev escape
+// hatch must never bypass security regression coverage.
+process.env["HUNTER_ALLOW_INSECURE_WEBHOOK"] = "false";
 // No ANTHROPIC_API_KEY -> scoring falls back to offline; no X402_PAY_TO -> payment disabled.
 
 let app: Express;

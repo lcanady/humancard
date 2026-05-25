@@ -16,7 +16,13 @@ import { z } from "zod";
 export const JobRawSchema = z
   .object({
     /** Origin of the job posting. */
-    source: z.enum(["himalayas", "hn-rss", "github", "crunchbase"]),
+    source: z.enum([
+      "himalayas",
+      "hn-rss",
+      "greenhouse",
+      "lever",
+      "crunchbase",
+    ]),
     /** Stable identifier within the source system (used for dedup). */
     externalId: z.string(),
     /** Canonical URL of the posting. */

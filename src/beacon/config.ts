@@ -61,10 +61,11 @@ const ConfigSchema = z
           .filter((entry) => entry.length > 0),
       ),
     /**
-     * Comma-separated GitHub org slugs to watch for hiring-signal events.
-     * Empty default disables the GitHub source.
+     * Comma-separated ATS board identifiers in `<provider>:<slug>` form.
+     * Supported providers: `greenhouse`, `lever`. Empty disables the source.
+     * Example: `greenhouse:anthropic,lever:openai,greenhouse:vercel`.
      */
-    HUNTER_GITHUB_ORGS: z
+    HUNTER_ATS_BOARDS: z
       .string()
       .default("")
       .transform((raw) =>
@@ -77,8 +78,16 @@ const ConfigSchema = z
     WEBHOOK_URL: z.string().url().optional(),
     /** Path for Hunter dedup state file. Default: `.hunter-state.json`. */
     HUNTER_STATE_FILE: z.string().min(1).optional(),
-    /** GitHub API token (optional — bumps rate limit from 60 to 5000/hr). */
-    GITHUB_TOKEN: z.string().min(1).optional(),
+    /**
+     * DEV-ONLY escape hatch for the alert.ts SSRF guard. When `true`, allows
+     * non-https schemes and loopback/private hosts as WEBHOOK_URL targets.
+     * Never enable in production — the guard exists to prevent outbound
+     * probes to internal services or cloud metadata endpoints.
+     */
+    HUNTER_ALLOW_INSECURE_WEBHOOK: z
+      .enum(["true", "false"])
+      .default("false")
+      .transform((v) => v === "true"),
   })
   .strict();
 
@@ -104,10 +113,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): BeaconConfig {
     X402_SCORE_PRICE: env["X402_SCORE_PRICE"],
     HUNTER_CRON_SCHEDULE: env["HUNTER_CRON_SCHEDULE"],
     HUNTER_KEYWORDS: env["HUNTER_KEYWORDS"],
-    HUNTER_GITHUB_ORGS: env["HUNTER_GITHUB_ORGS"],
+    HUNTER_ATS_BOARDS: env["HUNTER_ATS_BOARDS"],
     WEBHOOK_URL: env["WEBHOOK_URL"],
     HUNTER_STATE_FILE: env["HUNTER_STATE_FILE"],
-    GITHUB_TOKEN: env["GITHUB_TOKEN"],
+    HUNTER_ALLOW_INSECURE_WEBHOOK: env["HUNTER_ALLOW_INSECURE_WEBHOOK"],
   });
   if (!result.success) {
     const summary = result.error.issues
