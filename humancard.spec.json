@@ -1,0 +1,166 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://humancard.dev/ext/v1/schema.json",
+  "title": "HumancardExtensionParams",
+  "description": "Wire-format schema for the humancard extension payload (v0.1) attached to an A2A v0.3 Agent Card under capabilities.extensions[] with uri 'https://humancard.dev/ext/v1'.",
+  "type": "object",
+  "required": [
+    "specVersion",
+    "identity",
+    "experience",
+    "stack",
+    "preferences",
+    "scoringWeights"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "specVersion": {
+      "type": "string",
+      "description": "Semver of the humancard wire format itself.",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:[-+].+)?$"
+    },
+    "identity": {
+      "type": "object",
+      "description": "The person's identity block.",
+      "required": [
+        "name",
+        "handle",
+        "title",
+        "location",
+        "workMode",
+        "relocate",
+        "availability",
+        "links",
+        "summary"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "handle": { "type": "string", "minLength": 1 },
+        "title": { "type": "string", "minLength": 1 },
+        "location": { "type": "string", "minLength": 1 },
+        "workMode": {
+          "type": "string",
+          "description": "Conventionally 'remote-first', 'hybrid', or 'on-site' — but free-form."
+        },
+        "relocate": {
+          "type": "string",
+          "description": "Conventionally 'open', 'no', or 'sweet-deal-only' — but free-form."
+        },
+        "availability": {
+          "type": "string",
+          "description": "Conventionally 'immediately', 'YYYY-Qn', or 'not-looking' — but free-form."
+        },
+        "links": {
+          "type": "object",
+          "description": "Public profile links keyed by platform.",
+          "additionalProperties": { "type": "string", "format": "uri" }
+        },
+        "summary": { "type": "string", "minLength": 1 }
+      }
+    },
+    "experience": {
+      "type": "object",
+      "description": "Career/experience block.",
+      "required": ["years", "degree", "roles", "projects"],
+      "additionalProperties": false,
+      "properties": {
+        "years": { "type": "integer", "minimum": 0 },
+        "degree": { "type": "boolean" },
+        "roles": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/HumancardRole" }
+        },
+        "projects": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/HumancardProject" }
+        },
+        "origin": { "type": "string" }
+      }
+    },
+    "stack": {
+      "type": "object",
+      "description": "Tiered tech-stack inventory.",
+      "required": [
+        "tier1",
+        "tier2",
+        "tier3",
+        "languages",
+        "infra",
+        "crypto",
+        "frameworks",
+        "tools"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "tier1": { "type": "array", "items": { "type": "string" } },
+        "tier2": { "type": "array", "items": { "type": "string" } },
+        "tier3": { "type": "array", "items": { "type": "string" } },
+        "languages": { "type": "array", "items": { "type": "string" } },
+        "infra": { "type": "array", "items": { "type": "string" } },
+        "crypto": { "type": "array", "items": { "type": "string" } },
+        "frameworks": { "type": "array", "items": { "type": "string" } },
+        "tools": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "preferences": {
+      "type": "object",
+      "description": "Preferences governing what kinds of opportunities are interesting.",
+      "required": [
+        "salaryFloorUsd",
+        "equity",
+        "roles",
+        "sectors",
+        "dealbreakers"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "salaryFloorUsd": { "type": "number", "minimum": 0 },
+        "equity": { "type": "boolean" },
+        "roles": { "type": "array", "items": { "type": "string" } },
+        "sectors": { "type": "array", "items": { "type": "string" } },
+        "dealbreakers": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "scoringWeights": {
+      "type": "object",
+      "description": "Weighted criteria a matcher should apply when scoring opportunities. Values are integer weights; sum is conventionally 100.",
+      "additionalProperties": { "type": "number" }
+    }
+  },
+  "definitions": {
+    "HumancardRole": {
+      "type": "object",
+      "description": "A single role/job entry.",
+      "required": ["title", "company", "current", "highlights"],
+      "additionalProperties": false,
+      "properties": {
+        "title": { "type": "string", "minLength": 1 },
+        "company": { "type": "string", "minLength": 1 },
+        "url": { "type": "string", "format": "uri" },
+        "current": { "type": "boolean" },
+        "start": {
+          "type": "string",
+          "description": "ISO date or YYYY-MM."
+        },
+        "end": {
+          "type": "string",
+          "description": "ISO date or YYYY-MM. Omitted when current is true."
+        },
+        "highlights": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "HumancardProject": {
+      "type": "object",
+      "description": "A notable project (typically open-source or otherwise public).",
+      "required": ["name", "description"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "description": { "type": "string", "minLength": 1 },
+        "url": { "type": "string", "format": "uri" },
+        "highlight": { "type": "boolean" }
+      }
+    }
+  }
+}

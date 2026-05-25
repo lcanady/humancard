@@ -1,0 +1,15 @@
+{
+  "version": "1.0",
+  "agents": [
+    {
+      "name": "humancard-beacon",
+      "description": "Living Agent Card representing a human candidate. Queryable by agentic hiring pipelines.",
+      "agentCard": "/.well-known/agent-card.json",
+      "didDocument": "/.well-known/did.json",
+      "endpoints": {
+        "mcp": "/mcp",
+        "a2a": "/a2a"
+      }
+    }
+  ]
+}

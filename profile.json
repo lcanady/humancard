@@ -1,0 +1,216 @@
+{
+  "version": "1.0.0",
+  "identity": {
+    "name": "Lemuel Canady",
+    "handle": "lcanady",
+    "title": "Creative Technologist · Agentic AI Engineer",
+    "location": "Salem, OR, USA",
+    "remote": "remote-first",
+    "relocate": "sweet-deal-only",
+    "available": "immediately",
+    "links": {
+      "github": "https://github.com/lcanady",
+      "linkedin": "https://linkedin.com/in/lcanady"
+    },
+    "summary": "Techno-Wizard turning complex chaos into automated elegance. Started writing networked systems in the early 2000s — Unix chat servers, PHP/SQL forum engines, eCommerce platforms before frameworks existed. Spent years at the forefront of Web3, building decentralized economies at Gala Games and securing DePIN networks with Solidity, Hardhat, and cutting-edge EIP/NFT specifications. Now applying that same rigorous engineering mindset to agentic AI at one of the world's leading publications — building self-repairing, autonomous pipelines that handle everything from architectural design to QA at production scale inside legacy media constraints. Creator of n8m, an open-source agentic CLI for n8n that builds and fixes workflows in plain English. Obsessed with MCP, A2A, and bringing the trustless mindset of blockchain to AI compute."
+  },
+  "experience": {
+    "years": 20,
+    "degree": false,
+    "roles": [
+      {
+        "title": "AI Automation Architect",
+        "company": "Daily Caller",
+        "url": "https://dailycaller.com",
+        "current": true,
+        "highlights": [
+          "Building self-repairing agentic workflows and autonomous pipelines at production scale",
+          "Scaling agentic content operations inside legacy media infrastructure",
+          "MCP server authoring, Claude Code integration, agentic CLI tooling",
+          "Bridging the gap between AI demos and enterprise-grade production systems"
+        ]
+      },
+      {
+        "title": "Lead Blockchain Developer / Web3 Techno-Wizard",
+        "company": "Gala Games",
+        "url": "https://gala.com",
+        "current": false,
+        "start": "2022-04",
+        "end": "2024-12",
+        "highlights": [
+          "Smart contracts in Solidity/TypeScript/Hardhat with TDD discipline",
+          "Cutting-edge EIP and NFT specifications",
+          "DePIN network security and decentralized economy architecture",
+          "Debugging with Tenderly, testnet deployment, mentoring blockchain developers"
+        ]
+      },
+      {
+        "title": "Fullstack Blockchain Engineer",
+        "company": "Digibear.io",
+        "url": "https://digibear.io",
+        "current": false,
+        "start": "2019-01",
+        "end": "2022-04",
+        "highlights": [
+          "Smart contracts with meta-transactions for NFT projects",
+          "Minting sites and landing pages: React, Redux, Web3, ethers.js",
+          "3rd place — Moralis x Avalanche Hackathon",
+          "Scalable PWAs with Firebase backend"
+        ]
+      },
+      {
+        "title": "JavaScript Specialist / Instructor",
+        "company": "Clever Programmer",
+        "current": false,
+        "start": "2021-02",
+        "end": "2021-09",
+        "highlights": [
+          "Taught 100s of people programming fundamentals and fullstack web development",
+          "Helped 100s of people land software developer jobs",
+          "Curriculum: JavaScript, React, Node, Express, SQL, MongoDB, Firebase"
+        ]
+      },
+      {
+        "title": "Systems Engineer",
+        "company": "Electronic Data Systems",
+        "current": false,
+        "start": "2006-02",
+        "end": "2007-09",
+        "highlights": [
+          "Kentucky and Florida Medicaid projects — C/Pro*C, Oracle SQL, C#",
+          "Batch programs for TPL reports, denial edits, claims processing",
+          "Prior Authorization and Claims subsystems"
+        ]
+      }
+    ],
+    "projects": [
+      {
+        "name": "n8m",
+        "description": "Open-source agentic CLI for n8n — builds and fixes workflows in plain English",
+        "url": "https://n8m.run",
+        "highlight": true
+      }
+    ],
+    "origin": "Building Unix-based chat servers, web forums, and PHP/SQL systems since 2000. Computer technician at UCF eCommerce team 2001. Freelance programmer/analyst 2000–2007 covering web, database, Linux/Unix server admin."
+  },
+  "stack": {
+    "tier1": [
+      "MCP server authoring",
+      "Claude Code",
+      "n8n agentic workflows",
+      "RAG architecture",
+      "LangGraph",
+      "TypeScript",
+      "JavaScript",
+      "Python",
+      "Node.js"
+    ],
+    "tier2": [
+      "A2A protocol",
+      "multi-agent orchestration",
+      "agent evals",
+      "production guardrails",
+      "agentic CLI tooling",
+      "self-repairing pipelines"
+    ],
+    "tier3": [
+      "x402 micropayments",
+      "ANP/DID identity",
+      "on-chain agent economy",
+      "GEO/AEO optimization",
+      "trustless AI compute"
+    ],
+    "languages": [
+      "TypeScript",
+      "JavaScript",
+      "Python",
+      "Solidity",
+      "C#",
+      "C/Pro*C",
+      "PHP",
+      "SQL",
+      "Oracle SQL"
+    ],
+    "infra": [
+      "Firebase",
+      "Linux/Unix server administration",
+      "Next.js",
+      "Vercel",
+      "Cloudflare",
+      "AWS"
+    ],
+    "crypto": [
+      "Ethereum",
+      "Solidity",
+      "Hardhat",
+      "EIP standards",
+      "NFT specifications",
+      "meta-transactions",
+      "DePIN",
+      "Web3.js",
+      "ethers.js",
+      "Avalanche",
+      "Solana",
+      "GalaChain",
+      "Hyperledger",
+      "multiple EVM-compatible chains",
+      "Tenderly"
+    ],
+    "frameworks": [
+      "React",
+      "Redux",
+      "Express",
+      "Node.js",
+      "n8n",
+      "LangGraph",
+      "LangChain",
+      "Material-UI",
+      "Ant Design",
+      "styled-components",
+      "MongoDB",
+      "Firebase"
+    ],
+    "tools": [
+      "Hardhat",
+      "Tenderly",
+      "Claude Code",
+      "n8m (self-built)"
+    ]
+  },
+  "preferences": {
+    "salary_floor_usd": 150000,
+    "equity": true,
+    "roles": [
+      "Founding AI Engineer",
+      "Staff Agentic AI Engineer",
+      "AI Automation Architect",
+      "Creative Technologist",
+      "AI Innovation Lead",
+      "Head of AI"
+    ],
+    "sectors": [
+      "AI-native startups",
+      "crypto-AI crossover",
+      "media tech",
+      "innovation labs",
+      "developer tooling",
+      "agentic infrastructure",
+      "DePIN / decentralized compute"
+    ],
+    "dealbreakers": [
+      "requires CS degree or equivalent",
+      "no agentic or autonomous AI systems involved",
+      "on-site only with no remote option",
+      "large enterprise with 6+ month shipping cycles",
+      "no equity component"
+    ]
+  },
+  "scoring_weights": {
+    "uses_mcp_or_a2a_in_production": 25,
+    "crypto_ai_crossover": 20,
+    "founding_or_staff_level": 20,
+    "remote_or_relocation_package": 15,
+    "requires_agentic_production_experience": 15,
+    "no_degree_required": 5
+  }
+}

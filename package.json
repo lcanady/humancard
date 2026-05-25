@@ -1,0 +1,101 @@
+{
+  "name": "humancard",
+  "version": "0.1.0",
+  "description": "humancard — open standard for human-representative Agent Cards. The Agent Card IS the resume.",
+  "homepage": "https://humancard.dev",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lcanady/humancard.git"
+  },
+  "bugs": {
+    "url": "https://github.com/lcanady/humancard/issues"
+  },
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./profile": {
+      "types": "./dist/profile.d.ts",
+      "import": "./dist/profile.js"
+    },
+    "./types": {
+      "types": "./dist/types/agent-card.d.ts",
+      "import": "./dist/types/agent-card.js"
+    },
+    "./identity": {
+      "types": "./dist/beacon/anp-identity.d.ts",
+      "import": "./dist/beacon/anp-identity.js"
+    }
+  },
+  "files": [
+    "dist",
+    "profile.json",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "clean": "rm -rf dist",
+    "rebuild": "npm run clean && npm run build",
+    "typecheck": "tsc --noEmit",
+    "generate:card": "node dist/cli/generate-card.js",
+    "start:beacon": "node dist/beacon/server.js",
+    "start:hunter": "node dist/hunter/orchestrator.js",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "keywords": [
+    "humancard",
+    "agent-card",
+    "a2a",
+    "mcp",
+    "agentic",
+    "hiring",
+    "did-wba",
+    "x402",
+    "anthropic",
+    "claude",
+    "open-standard"
+  ],
+  "author": "Lemuel Canady <lem@dailycaller.com>",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/node": "^22.0.0",
+    "@types/node-cron": "^3.0.11",
+    "@types/supertest": "^7.2.0",
+    "supertest": "^7.2.2",
+    "typescript": "^5.6.0",
+    "vitest": "^4.1.7"
+  },
+  "dependencies": {
+    "@a2a-js/sdk": "^0.3.13",
+    "@anthropic-ai/sdk": "^0.94.0",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@noble/ed25519": "^3.1.0",
+    "@noble/hashes": "^2.2.0",
+    "@octokit/plugin-retry": "^8.1.0",
+    "@octokit/plugin-throttling": "^11.0.3",
+    "@octokit/rest": "^22.0.1",
+    "@x402/core": "^2.11.0",
+    "@x402/evm": "^2.11.0",
+    "@x402/mcp": "^2.11.0",
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "express-rate-limit": "^8.5.2",
+    "helmet": "^8.2.0",
+    "jose": "^6.2.3",
+    "multiformats": "^13.4.2",
+    "node-cron": "^4.2.1",
+    "rss-parser": "^3.13.0",
+    "zod": "^4.4.3"
+  }
+}
