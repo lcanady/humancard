@@ -18,7 +18,8 @@ import { checkDealbreakers, scoreOpportunity } from "../scoring/engine.js";
 import type { ScoredJob } from "../scoring/types.js";
 import { logger } from "../shared/logger.js";
 import type { CompanySignal, JobRaw } from "../shared/types.js";
-import { sendAlert, sendFundingAlert } from "./alert.js";
+import { sendAlert, sendFundingAlert, sendIdeasAlert } from "./alert.js";
+import { ideateFromSignals } from "./ideator.js";
 import { fetchAtsJobs } from "./sources/ats.js";
 import { fetchFundingSignals } from "./sources/crunchbase.js";
 import { fetchHimalayasJobs } from "./sources/himalayas.js";
@@ -207,6 +208,32 @@ export async function runHuntCycle(): Promise<void> {
     signalSuppressed = fr.suppressed;
   }
 
+  let ideasGenerated = 0;
+  let ideasDelivered = 0;
+  let ideasSuppressed = 0;
+  if (fundingSignals.length > 0) {
+    try {
+      const ideas = await ideateFromSignals(profile, fundingSignals);
+      ideasGenerated = ideas.length;
+      if (config.WEBHOOK_URL !== undefined && ideas.length > 0) {
+        const iOpts: Parameters<typeof sendIdeasAlert>[0] = {
+          webhookUrl: config.WEBHOOK_URL,
+          ideas,
+        };
+        if (config.HUNTER_STATE_FILE !== undefined) {
+          iOpts.stateFile = config.HUNTER_STATE_FILE;
+        }
+        const ir = await sendIdeasAlert(iOpts);
+        ideasDelivered = ir.delivered;
+        ideasSuppressed = ir.suppressed;
+      }
+    } catch (err) {
+      logger.error("hunter: ideator failed", {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
   if (config.WEBHOOK_URL === undefined && filtered.length > 0) {
     logger.info("hunter: matches (no webhook configured)", {
       count: filtered.length,
@@ -230,6 +257,9 @@ export async function runHuntCycle(): Promise<void> {
     suppressed,
     signalDelivered,
     signalSuppressed,
+    ideasGenerated,
+    ideasDelivered,
+    ideasSuppressed,
   });
 }
 

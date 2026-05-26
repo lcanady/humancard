@@ -12,6 +12,7 @@ import { config } from "../beacon/config.js";
 import { logger } from "../shared/logger.js";
 import type { ScoredJob } from "../scoring/types.js";
 import type { CompanySignal } from "../shared/types.js";
+import type { ProjectIdea } from "./ideator.js";
 
 const DEFAULT_STATE_FILE = ".hunter-state.json";
 
@@ -51,6 +52,8 @@ const DEDUP_WINDOW_MS = 24 * 60 * 60 * 1000;
 const MAX_JOBS_PER_POST = 10;
 const MAX_POSTS_PER_CYCLE = 5;
 const MAX_SIGNALS_PER_ALERT = 8;
+const MAX_IDEAS_PER_ALERT = 8;
+const IDEA_FLOOR = 60;
 const MAX_CONTENT_LENGTH = 1900;
 const MAX_JOBS_PER_CYCLE = MAX_JOBS_PER_POST * MAX_POSTS_PER_CYCLE;
 
@@ -307,6 +310,121 @@ export async function sendFundingAlert(
     }
   } catch (err) {
     logger.error("funding-alert: webhook POST failed", {
+      error: err instanceof Error ? err.message : String(err),
+    });
+    suppressed += top.length;
+  }
+
+  if (fresh.length > top.length) suppressed += fresh.length - top.length;
+
+  return { delivered, suppressed };
+}
+
+/** Options accepted by {@link sendIdeasAlert}. */
+export interface SendIdeasAlertOptions {
+  /** Discord/Slack-compatible incoming webhook URL. */
+  webhookUrl: string;
+  /** Generated project ideas to consider. */
+  ideas: ProjectIdea[];
+  /** Override path to the dedup state file. */
+  stateFile?: string;
+}
+
+/**
+ * Dedup key for an idea. Anchored to the source signal + idea title so
+ * the same idea against the same signal isn't re-fired within the
+ * dedup window, but a new signal about the same company still alerts.
+ */
+function ideaKey(idea: ProjectIdea): string {
+  const sigKey = `${idea.signal.source}:${idea.signal.externalId}`;
+  const titleSlug = idea.title
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 60);
+  return `idea:${sigKey}:${titleSlug}`;
+}
+
+function renderIdeasMarkdown(ideas: ProjectIdea[]): string {
+  const noun = ideas.length === 1 ? "lead" : "leads";
+  const header = `**${ideas.length} project ${noun}** (from recent funding/launch signals)\n`;
+  const lines = ideas.map((i) => {
+    const score = i.fitScore.toFixed(0);
+    return `- [**${i.title}** · ${i.signal.company}](${i.signal.url}) — fit **${score}**\n  ${i.pitch}\n  _Why:_ ${i.whyFit}`;
+  });
+  let content = header + lines.join("\n");
+  if (content.length > MAX_CONTENT_LENGTH) {
+    content = `${content.slice(0, MAX_CONTENT_LENGTH - 1)}…`;
+  }
+  return content;
+}
+
+/**
+ * Dispatch a webhook alert for AI-generated project ideas. Filters out ideas
+ * below {@link IDEA_FLOOR}, dedupes via the shared state file using a
+ * `idea:<source>:<id>:<slug>` key, and caps the post at
+ * {@link MAX_IDEAS_PER_ALERT}.
+ */
+export async function sendIdeasAlert(
+  opts: SendIdeasAlertOptions,
+): Promise<SendAlertResult> {
+  assertSafeWebhookUrl(opts.webhookUrl);
+  const stateFile =
+    opts.stateFile ?? process.env["HUNTER_STATE_FILE"] ?? DEFAULT_STATE_FILE;
+  const state = await loadState(stateFile);
+  const now = Date.now();
+
+  const above = opts.ideas.filter((i) => i.fitScore >= IDEA_FLOOR);
+
+  const fresh: ProjectIdea[] = [];
+  let suppressed = 0;
+  for (const idea of above) {
+    const key = ideaKey(idea);
+    const seen = state.get(key);
+    if (seen !== undefined) {
+      const seenMs = Date.parse(seen);
+      if (Number.isFinite(seenMs) && now - seenMs < DEDUP_WINDOW_MS) {
+        suppressed += 1;
+        continue;
+      }
+    }
+    fresh.push(idea);
+  }
+
+  if (fresh.length === 0) {
+    return { delivered: 0, suppressed };
+  }
+
+  const top = fresh.slice(0, MAX_IDEAS_PER_ALERT);
+  const content = renderIdeasMarkdown(top);
+
+  let delivered = 0;
+  try {
+    const res = await fetch(opts.webhookUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content }),
+    });
+    if (!res.ok) {
+      logger.error("ideas-alert: webhook returned non-2xx", {
+        status: res.status,
+      });
+      suppressed += top.length;
+    } else {
+      delivered = top.length;
+      const ts = new Date(now).toISOString();
+      for (const idea of top) state.set(ideaKey(idea), ts);
+      try {
+        await saveState(stateFile, state);
+      } catch (err) {
+        logger.error("ideas-alert: state save failed", {
+          stateFile,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+  } catch (err) {
+    logger.error("ideas-alert: webhook POST failed", {
       error: err instanceof Error ? err.message : String(err),
     });
     suppressed += top.length;
