@@ -9,8 +9,10 @@ pipelines (or anything else that needs to reason about a candidate) talk to a
 person's beacon over MCP and A2A instead of scraping a PDF.
 
 This repo is the v0.1 reference implementation: a TypeScript Beacon (the
-public-facing server) and a Hunter (the private signal monitor that
-consumes other people's beacons).
+public-facing server), a Hunter (the private signal monitor that consumes
+other people's beacons), and an on-chain identity layer (Solidity
+contracts on Base anchoring third-party attestations to the candidate's
+DID).
 
 ## How it works
 
@@ -23,11 +25,21 @@ tools over a Streamable HTTP transport at `/mcp`, and speaks A2A JSON-RPC at
 when an EVM payout address is configured.
 
 **Hunter.** A private cron-driven companion that pulls job listings and
-company signals from public sources (Himalayas, HN "Who's Hiring", GitHub,
-Crunchbase), runs them through the same scoring engine the Beacon exposes via
-MCP, and posts qualifying matches to a webhook. Hunter never publishes
-anything; it is the candidate-side reader of other people's beacons (and of
-the noisy non-beacon job market).
+company signals from public sources (Himalayas MCP, HN "Who's Hiring" via
+Algolia, ATS boards on Greenhouse/Lever/Ashby, TechCrunch + SEC EDGAR for
+funding signals), runs them through the same scoring engine the Beacon
+exposes via MCP, paginates the top matches across multiple webhook posts,
+and — for each funding signal — uses Claude to generate scored project
+**leads** the candidate could build, prototype, or pitch into the funded
+company. Hunter never publishes anything; it is the candidate-side reader
+of other people's beacons (and of the noisy non-beacon job market).
+
+**On-chain identity layer.** Solidity contracts on Base that anchor
+third-party verifiable claims to the candidate's DID via the Ethereum
+Attestation Service. Past employers, colleagues, and clients sign
+attestations; the candidate retains a permanent, cryptographically
+verifiable record of their professional history. See
+[`docs/onchain.md`](./docs/onchain.md) for the contract surface and SDK.
 
 ## Quickstart
 
@@ -105,16 +117,24 @@ console.log(result.structuredContent);
         /mcp      │  StreamableHTTP    ◀── 5 humancard_* tools
         /a2a      │  JSON-RPC          ◀── A2A protocol      │
                   │                                          │
-                  └──────────────────────────────────────────┘
-                            ▲                ▲
-                            │                │
-                            │                │ MCP / A2A
-                            │                │
+                  └─────────────┬────────────────────────────┘
+                            ▲   │            ▲
+                            │   │ reads      │
+                            │   ▼            │ MCP / A2A
+                  ┌─────────┴───────────┐    │
+                  │   On-chain layer    │    │
+                  │   (Base Sepolia)    │    │
+                  │  HumancardAttestor  │    │
+                  │  + EAS              │    │
+                  └─────────────────────┘    │
+                            ▲                │
+                            │ signs          │
                   ┌─────────┴────────┐  ┌────┴─────────────────┐
                   │   Other agents   │  │       Hunter         │
-                  │ (recruiters,     │  │  (private companion, │
-                  │  matchers, ANP   │  │  consumes signals,   │
-                  │  crawlers)       │  │  posts to webhook)   │
+                  │  (recruiters,    │  │  (private companion, │
+                  │   matchers, ANP  │  │  scores jobs, ideates │
+                  │   crawlers,      │  │  off funding signals,│
+                  │   attestors)     │  │  posts to webhook)   │
                   └──────────────────┘  └──────────────────────┘
 ```
 
@@ -141,10 +161,13 @@ logger subsystems is documented in [`.env.example`](./.env.example). Quick
 reference:
 
 - `PORT`, `BEACON_BASE_URL`, `ALLOWED_HOSTS` — beacon HTTP transport.
-- `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL` — Claude credentials for scoring.
+- `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL` — Claude credentials for scoring (default: Haiku 4.5).
 - `X402_PAY_TO`, `X402_NETWORK`, `X402_FACILITATOR_URL`, `X402_SCORE_PRICE` — premium tool gating.
 - `DIDWBA_PRIVATE_KEY_HEX` — Ed25519 key for the beacon's did:wba identity.
-- `HUNTER_CRON_SCHEDULE`, `HUNTER_KEYWORDS`, `HUNTER_GITHUB_ORGS`, `HUNTER_STATE_FILE`, `WEBHOOK_URL`, `GITHUB_TOKEN` — hunter loop.
+- `HUNTER_CRON_SCHEDULE`, `HUNTER_KEYWORDS`, `HUNTER_ATS_BOARDS`, `HUNTER_STATE_FILE`, `WEBHOOK_URL` — hunter loop.
+- `HUNTER_ALLOW_INSECURE_WEBHOOK` — DEV-ONLY escape hatch for the SSRF guard.
+- `BASE_SEPOLIA_RPC_URL`, `DEPLOYER_PRIVATE_KEY`, `DEPLOYER_ADDRESS` — on-chain signing for the attestation layer (testnet).
+- `HUMANCARD_ATTESTOR_ADDRESS`, `HUMANCARD_SCHEMA_UID`, `EAS_ADDRESS`, `SCHEMA_REGISTRY_ADDRESS` — deployed contract references.
 - `LOG_LEVEL` — logger verbosity.
 
 ## The humancard extension
@@ -198,8 +221,24 @@ Reporting policy: see [`SECURITY.md`](./SECURITY.md).
   card CLI.
 - **Phase 2 (beacon):** done — Express server, MCP transport, A2A transport,
   did:wba identity, x402 middleware, scoring engine, security hardening.
-- **Phase 3 (hunter):** in progress — sources, dedup state, scoring loop,
-  webhook delivery.
+- **Phase 3 (hunter):** done — Himalayas MCP, Algolia HN search, ATS
+  (Greenhouse/Lever/Ashby), TechCrunch + SEC EDGAR funding signals,
+  keyword filtering, dedup state, scoring loop, paginated webhook
+  delivery, and a Claude-backed **Ideator** that turns each funding
+  signal into scored project leads.
+- **Phase 4 (on-chain):** in progress — HumancardAttestor (EAS-backed
+  credential attestations) deployed on Base Sepolia. Soulbound reputation
+  NFT, token-gated tiers, and recruiter staking are the next milestones.
+
+### Live deployments
+
+| Contract | Address | Chain |
+|---|---|---|
+| HumancardAttestor | [`0xAA7f...0238`](https://sepolia.basescan.org/address/0xAA7fbE3A5a7d4c2C75F8B6aB3e72797937860238) | Base Sepolia (84532) |
+| EAS (predeploy) | `0x4200...0021` | Base Sepolia |
+| SchemaRegistry (predeploy) | `0x4200...0020` | Base Sepolia |
+
+Schema UID: `0x7543b38f17b9438f5d619a5599670d783efeadb718c3f4dc9360bc81e0ee9f9b`
 
 This is **v0.1 of the protocol**. The shape will change. Implementers in
 other languages are welcome and encouraged — see
