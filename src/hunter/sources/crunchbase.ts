@@ -32,12 +32,31 @@ const COMPANY_RE =
 const tcParser: Parser = new Parser();
 const secParser: Parser = new Parser();
 
+/** Options accepted by {@link fetchFundingSignals}. */
+export interface FetchFundingSignalsOptions {
+  /**
+   * Case-insensitive keyword set used to relevance-filter TechCrunch items
+   * (matched against title + contentSnippet). When empty/undefined, every
+   * funding article is kept. SEC EDGAR Form D filings are not filtered —
+   * their titles only carry the issuer name, not a sector descriptor.
+   */
+  keywords?: string[];
+}
+
 /**
  * Pull funding-signal items from TechCrunch + SEC EDGAR. Items not matching
- * the company-name regex (TechCrunch) are dropped.
+ * the company-name regex (TechCrunch) are dropped; if `keywords` is provided,
+ * TechCrunch items must also keyword-match to be kept.
  */
-export async function fetchFundingSignals(): Promise<CompanySignal[]> {
+export async function fetchFundingSignals(
+  opts: FetchFundingSignalsOptions = {},
+): Promise<CompanySignal[]> {
   const out: CompanySignal[] = [];
+
+  const kw =
+    opts.keywords !== undefined && opts.keywords.length > 0
+      ? opts.keywords.map((k) => k.toLowerCase()).filter((k) => k.length > 0)
+      : null;
 
   for (const url of TECHCRUNCH_FEEDS) {
     try {
@@ -45,7 +64,12 @@ export async function fetchFundingSignals(): Promise<CompanySignal[]> {
       for (const item of feed.items) {
         try {
           const sig = parseTechCrunchItem(item);
-          if (sig !== null) out.push(sig);
+          if (sig === null) continue;
+          if (kw !== null) {
+            const hay = `${item.title ?? ""}\n${item.contentSnippet ?? item.content ?? ""}`.toLowerCase();
+            if (!kw.some((k) => hay.includes(k))) continue;
+          }
+          out.push(sig);
         } catch (err) {
           logger.warn("techcrunch: skipping unparseable item", {
             error: err instanceof Error ? err.message : String(err),

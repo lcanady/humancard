@@ -106,7 +106,7 @@ export async function runHuntCycle(): Promise<void> {
       boards: config.HUNTER_ATS_BOARDS,
       keywords: config.HUNTER_KEYWORDS,
     }),
-    fetchFundingSignals(),
+    fetchFundingSignals({ keywords: config.HUNTER_KEYWORDS }),
   ]);
 
   const sourceNames = ["himalayas", "hn-rss", "ats", "funding"] as const;
