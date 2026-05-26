@@ -1,15 +1,15 @@
 /**
- * ATS (applicant-tracking system) job-board source. Polls public Greenhouse
- * and Lever boards — both expose unauthenticated JSON — and normalizes to
- * `JobRaw`. This replaces the GitHub org event watcher: Greenhouse + Lever
- * is where modern AI/web3 startups actually publish job postings.
+ * ATS (applicant-tracking system) job-board source. Polls public Greenhouse,
+ * Lever, and Ashby boards — all expose unauthenticated JSON — and normalizes
+ * to `JobRaw`. This is where modern AI/web3 startups publish job postings.
  *
  * Failure isolation: any per-board fetch/parse error is logged and that
  * board's results drop to zero. A single bad board never poisons the cycle.
  *
  * Board identifier shape (env-supplied, comma-separated):
  *   greenhouse:anthropic   →  https://boards-api.greenhouse.io/v1/boards/anthropic/jobs
- *   lever:openai           →  https://api.lever.co/v0/postings/openai?mode=json
+ *   lever:<org>            →  https://api.lever.co/v0/postings/<org>?mode=json
+ *   ashby:openai           →  https://api.ashbyhq.com/posting-api/job-board/openai
  */
 
 import { z } from "zod";
@@ -47,11 +47,29 @@ const LeverJobSchema = z
   })
   .passthrough();
 
+const AshbyJobSchema = z
+  .object({
+    id: z.string(),
+    title: z.string(),
+    jobUrl: z.string().url().optional(),
+    applyUrl: z.string().url().optional(),
+    publishedAt: z.string().optional(),
+    descriptionPlain: z.string().optional(),
+    descriptionHtml: z.string().optional(),
+    location: z.string().optional(),
+    isListed: z.boolean().optional(),
+  })
+  .passthrough();
+
+const AshbyListSchema = z
+  .object({ jobs: z.array(AshbyJobSchema) })
+  .passthrough();
+
 /** Options accepted by {@link fetchAtsJobs}. */
 export interface FetchAtsJobsOptions {
   /**
    * Board identifiers in `<provider>:<slug>` form. Supported providers:
-   * `greenhouse`, `lever`. Empty list disables the source.
+   * `greenhouse`, `lever`, `ashby`. Empty list disables the source.
    */
   boards: string[];
   /**
@@ -130,7 +148,10 @@ async function fetchBoard(board: string): Promise<JobRaw[]> {
 
   if (provider === "greenhouse") return fetchGreenhouse(slug);
   if (provider === "lever") return fetchLever(slug);
-  logger.warn("ats: unsupported provider", { provider });
+  if (provider === "ashby") return fetchAshby(slug);
+  logger.warn("ats: unsupported provider (expected greenhouse|lever|ashby)", {
+    provider,
+  });
   return [];
 }
 
@@ -198,6 +219,40 @@ async function fetchLever(slug: string): Promise<JobRaw[]> {
           ? new Date(j.createdAt).toISOString()
           : new Date().toISOString(),
       raw: j,
+    });
+  }
+  return out;
+}
+
+async function fetchAshby(slug: string): Promise<JobRaw[]> {
+  const url = `https://api.ashbyhq.com/posting-api/job-board/${encodeURIComponent(slug)}?includeCompensation=true`;
+  const res = await fetch(url, {
+    headers: { accept: "application/json" },
+  });
+  if (!res.ok) {
+    throw new Error(`ashby ${slug}: HTTP ${res.status}`);
+  }
+  const json: unknown = await res.json();
+  const parsed = AshbyListSchema.safeParse(json);
+  if (!parsed.success) {
+    throw new Error(`ashby ${slug}: schema mismatch`);
+  }
+  const out: JobRaw[] = [];
+  for (const job of parsed.data.jobs) {
+    // Skip unlisted/internal postings — Ashby flags these explicitly.
+    if (job.isListed === false) continue;
+    const url2 = job.jobUrl ?? job.applyUrl;
+    if (url2 === undefined) continue;
+    out.push({
+      source: "ashby",
+      externalId: `${slug}/${job.id}`,
+      url: url2,
+      title: job.title,
+      company: slug,
+      description:
+        job.descriptionPlain ?? stripHtml(job.descriptionHtml ?? ""),
+      postedAt: job.publishedAt ?? new Date().toISOString(),
+      raw: job,
     });
   }
   return out;

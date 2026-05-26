@@ -21,6 +21,7 @@ export const JobRawSchema = z
       "hn-rss",
       "greenhouse",
       "lever",
+      "ashby",
       "crunchbase",
     ]),
     /** Stable identifier within the source system (used for dedup). */
