@@ -48,9 +48,11 @@ function assertSafeWebhookUrl(raw: string): URL {
   return url;
 }
 const DEDUP_WINDOW_MS = 24 * 60 * 60 * 1000;
-const MAX_JOBS_PER_ALERT = 10;
+const MAX_JOBS_PER_POST = 10;
+const MAX_POSTS_PER_CYCLE = 5;
 const MAX_SIGNALS_PER_ALERT = 8;
 const MAX_CONTENT_LENGTH = 1900;
+const MAX_JOBS_PER_CYCLE = MAX_JOBS_PER_POST * MAX_POSTS_PER_CYCLE;
 
 /** Options accepted by {@link sendAlert}. */
 export interface SendAlertOptions {
@@ -103,9 +105,16 @@ function jobKey(job: ScoredJob): string {
   return `${job.source}:${job.externalId}`;
 }
 
-/** Render the markdown payload (truncated to Discord-safe length). */
-function renderMarkdown(jobs: ScoredJob[]): string {
-  const header = `**${jobs.length} new opportunit${jobs.length === 1 ? "y" : "ies"}**\n`;
+/** Render one page of the markdown payload (truncated to Discord-safe length). */
+function renderMarkdown(
+  jobs: ScoredJob[],
+  page: number,
+  totalPages: number,
+  totalJobs: number,
+): string {
+  const suffix = totalPages > 1 ? ` (page ${page}/${totalPages})` : "";
+  const noun = totalJobs === 1 ? "opportunity" : "opportunities";
+  const header = `**${totalJobs} new ${noun}${suffix}**\n`;
   const lines = jobs.map((j) => {
     const score = j.score.toFixed(1);
     return `- [${j.title} @ ${j.company}](${j.url}) — score **${score}** (${j.recommendation})`;
@@ -149,43 +158,60 @@ export async function sendAlert(opts: SendAlertOptions): Promise<SendAlertResult
     return { delivered: 0, suppressed };
   }
 
-  const top = fresh.slice(0, MAX_JOBS_PER_ALERT);
-  const content = renderMarkdown(top);
-
-  let delivered = 0;
-  try {
-    const res = await fetch(opts.webhookUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ content }),
-    });
-    if (!res.ok) {
-      logger.error("alert: webhook returned non-2xx", {
-        status: res.status,
-      });
-      suppressed += top.length;
-    } else {
-      delivered = top.length;
-      const ts = new Date(now).toISOString();
-      for (const job of top) state.set(jobKey(job), ts);
-      try {
-        await saveState(stateFile, state);
-      } catch (err) {
-        logger.error("alert: state save failed", {
-          stateFile,
-          error: err instanceof Error ? err.message : String(err),
-        });
-      }
-    }
-  } catch (err) {
-    logger.error("alert: webhook POST failed", {
-      error: err instanceof Error ? err.message : String(err),
-    });
-    suppressed += top.length;
+  // Cap total jobs delivered this cycle. Anything beyond is suppressed.
+  const deliverable = fresh.slice(0, MAX_JOBS_PER_CYCLE);
+  if (fresh.length > deliverable.length) {
+    suppressed += fresh.length - deliverable.length;
   }
 
-  // Anything beyond the top-N also counts as suppressed for this cycle.
-  if (fresh.length > top.length) suppressed += fresh.length - top.length;
+  const totalPages = Math.ceil(deliverable.length / MAX_JOBS_PER_POST);
+  const ts = new Date(now).toISOString();
+  let delivered = 0;
+
+  for (let page = 1; page <= totalPages; page++) {
+    const start = (page - 1) * MAX_JOBS_PER_POST;
+    const chunk = deliverable.slice(start, start + MAX_JOBS_PER_POST);
+    const content = renderMarkdown(chunk, page, totalPages, deliverable.length);
+
+    try {
+      const res = await fetch(opts.webhookUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content }),
+      });
+      if (!res.ok) {
+        logger.error("alert: webhook returned non-2xx", {
+          status: res.status,
+          page,
+          totalPages,
+        });
+        suppressed += chunk.length;
+        // Stop further pages — webhook target is unhealthy.
+        break;
+      }
+      delivered += chunk.length;
+      for (const job of chunk) state.set(jobKey(job), ts);
+    } catch (err) {
+      logger.error("alert: webhook POST failed", {
+        error: err instanceof Error ? err.message : String(err),
+        page,
+        totalPages,
+      });
+      suppressed += chunk.length;
+      break;
+    }
+  }
+
+  if (delivered > 0) {
+    try {
+      await saveState(stateFile, state);
+    } catch (err) {
+      logger.error("alert: state save failed", {
+        stateFile,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
 
   return { delivered, suppressed };
 }
