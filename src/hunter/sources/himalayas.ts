@@ -1,8 +1,13 @@
 /**
  * Himalayas remote-jobs MCP client. Connects to the public Himalayas MCP
  * endpoint (`https://mcp.himalayas.app/mcp`, no auth) and invokes their
- * `search_jobs` tool, normalizing results to the project-wide `JobRaw`
- * shape.
+ * `search_jobs` tool once per keyword, normalizing the prose-formatted
+ * response into `JobRaw`.
+ *
+ * Wire format note: the Himalayas server returns emoji-tagged prose
+ * (NOT JSON) in its text content blocks. Blocks are separated by
+ * `\n---\n` and each block carries 🚀 title, 🏢 company, 🔗 apply URL,
+ * etc. We regex-extract those fields rather than trying to JSON.parse.
  *
  * Failure isolation: any transport, parse, or schema error is logged and
  * an empty array returned — the orchestrator must never let a single
@@ -11,56 +16,29 @@
 
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import { z } from "zod";
 
 import { logger } from "../../shared/logger.js";
 import type { JobRaw } from "../../shared/types.js";
 
-/**
- * Zod schema for a single Himalayas job item as returned by the MCP tool.
- * The upstream payload is loose JSON; we only validate the fields we
- * actually consume and tolerate extras.
- */
-const HimalayasJobSchema = z
-  .object({
-    id: z.union([z.string(), z.number()]).optional(),
-    guid: z.string().optional(),
-    slug: z.string().optional(),
-    title: z.string().optional(),
-    company_name: z.string().optional(),
-    company: z.string().optional(),
-    description: z.string().optional(),
-    excerpt: z.string().optional(),
-    application_link: z.string().url().optional(),
-    job_url: z.string().url().optional(),
-    url: z.string().url().optional(),
-    pub_date: z.string().optional(),
-    published_at: z.string().optional(),
-    posted_at: z.string().optional(),
-  })
-  .passthrough();
-
-type HimalayasJob = z.infer<typeof HimalayasJobSchema>;
-
 /** Options accepted by {@link fetchHimalayasJobs}. */
 export interface FetchHimalayasJobsOptions {
-  /** Keyword set to OR-search; concatenated space-separated for the upstream tool. */
+  /** Keywords; one upstream tool call per keyword, deduped by job URL. */
   keywords: string[];
-  /** Optional max results cap forwarded to the tool. */
-  limit?: number;
+  /** Page number passed to the upstream tool. Default 1. */
+  page?: number;
 }
 
 /**
  * Pull jobs from the Himalayas MCP server.
  *
- * @param opts Search keywords and optional result cap.
+ * @param opts Search keywords and optional page override.
  * @returns Validated `JobRaw[]`. Empty on any failure.
  */
 export async function fetchHimalayasJobs(
   opts: FetchHimalayasJobsOptions,
 ): Promise<JobRaw[]> {
-  const query = opts.keywords.join(" ").trim();
-  if (query.length === 0) return [];
+  const keywords = opts.keywords.filter((k) => k.length > 0);
+  if (keywords.length === 0) return [];
 
   let client: Client | undefined;
   try {
@@ -71,34 +49,33 @@ export async function fetchHimalayasJobs(
       { name: "humancard-hunter", version: "0.1.0" },
       { capabilities: {} },
     );
-    // The streamable-HTTP transport types `sessionId` as `string | undefined`
-    // while the abstract `Transport` interface declares it as optional with
-    // `exactOptionalPropertyTypes` strictness. Cast through `unknown` — the
-    // runtime contract is identical.
-    await client.connect(transport as unknown as Parameters<Client["connect"]>[0]);
+    await client.connect(
+      transport as unknown as Parameters<Client["connect"]>[0],
+    );
 
-    const callArgs: Record<string, unknown> = { query };
-    if (opts.limit !== undefined) callArgs["limit"] = opts.limit;
-
-    const result = await client.callTool({
-      name: "search_jobs",
-      arguments: callArgs,
-    });
-
-    const items = extractItems(result);
-    const jobs: JobRaw[] = [];
-    for (const item of items) {
-      const parsed = HimalayasJobSchema.safeParse(item);
-      if (!parsed.success) {
-        logger.warn("himalayas: skipping invalid item", {
-          issues: parsed.error.issues,
+    const seen = new Map<string, JobRaw>();
+    for (const keyword of keywords) {
+      const args: Record<string, unknown> = {
+        keyword,
+        page: opts.page ?? 1,
+      };
+      try {
+        const result = await client.callTool({
+          name: "search_jobs",
+          arguments: args,
         });
-        continue;
+        const text = extractText(result);
+        for (const job of parseBlocks(text)) {
+          if (!seen.has(job.externalId)) seen.set(job.externalId, job);
+        }
+      } catch (err) {
+        logger.warn("himalayas: search_jobs failed for keyword", {
+          keyword,
+          error: err instanceof Error ? err.message : String(err),
+        });
       }
-      const normalized = normalize(parsed.data);
-      if (normalized !== null) jobs.push(normalized);
     }
-    return jobs;
+    return Array.from(seen.values());
   } catch (err) {
     logger.error("himalayas: fetch failed", {
       error: err instanceof Error ? err.message : String(err),
@@ -115,91 +92,80 @@ export async function fetchHimalayasJobs(
   }
 }
 
-/**
- * Pull a flat array of upstream items out of the heterogeneous MCP
- * `tools/call` result envelope. Tries the structured-content path first
- * (most modern servers), then falls back to parsing JSON out of any
- * `text` content blocks.
- */
-function extractItems(result: unknown): unknown[] {
-  if (typeof result !== "object" || result === null) return [];
+/** Concatenate every `text`-type content block from an MCP tool result. */
+function extractText(result: unknown): string {
+  if (typeof result !== "object" || result === null) return "";
   const obj = result as Record<string, unknown>;
-
-  const structured = obj["structuredContent"];
-  if (structured !== undefined) {
-    if (Array.isArray(structured)) return structured;
-    if (typeof structured === "object" && structured !== null) {
-      const sObj = structured as Record<string, unknown>;
-      const candidates = ["jobs", "items", "results", "data"];
-      for (const key of candidates) {
-        const v = sObj[key];
-        if (Array.isArray(v)) return v;
-      }
-    }
-  }
-
   const content = obj["content"];
-  if (Array.isArray(content)) {
-    for (const block of content) {
-      if (
-        typeof block === "object" &&
-        block !== null &&
-        (block as Record<string, unknown>)["type"] === "text"
-      ) {
-        const text = (block as Record<string, unknown>)["text"];
-        if (typeof text === "string") {
-          try {
-            const parsed: unknown = JSON.parse(text);
-            if (Array.isArray(parsed)) return parsed;
-            if (typeof parsed === "object" && parsed !== null) {
-              const pObj = parsed as Record<string, unknown>;
-              for (const key of ["jobs", "items", "results", "data"]) {
-                const v = pObj[key];
-                if (Array.isArray(v)) return v;
-              }
-            }
-          } catch {
-            // Non-JSON text content; ignore.
-          }
-        }
-      }
+  if (!Array.isArray(content)) return "";
+  const parts: string[] = [];
+  for (const block of content) {
+    if (typeof block !== "object" || block === null) continue;
+    const b = block as Record<string, unknown>;
+    if (b["type"] === "text" && typeof b["text"] === "string") {
+      parts.push(b["text"]);
     }
   }
-
-  return [];
+  return parts.join("\n");
 }
 
-/** Normalize a validated upstream item into a `JobRaw`. Returns null if required fields are missing. */
-function normalize(item: HimalayasJob): JobRaw | null {
-  const url =
-    item.application_link ?? item.job_url ?? item.url ?? undefined;
-  const title = item.title;
-  const company = item.company_name ?? item.company;
-  const description = item.description ?? item.excerpt ?? "";
-  const externalIdRaw =
-    item.guid ?? (item.id !== undefined ? String(item.id) : item.slug);
-  const postedAtRaw =
-    item.pub_date ?? item.published_at ?? item.posted_at ?? undefined;
+const APPLY_RE = /🔗\s*\*\*Apply on Himalayas:\*\*\s*(\S+)/u;
+const TITLE_RE = /🚀\s*\*\*(.+?)\*\*/u;
+const COMPANY_RE = /🏢\s*([^\n]+)/u;
 
-  if (
-    url === undefined ||
-    title === undefined ||
-    company === undefined ||
-    externalIdRaw === undefined
-  ) {
-    return null;
+/** Strip the upstream's UTM tracking params from a URL. */
+function cleanUrl(raw: string): string {
+  try {
+    const u = new URL(raw);
+    for (const key of Array.from(u.searchParams.keys())) {
+      if (key.startsWith("utm_")) u.searchParams.delete(key);
+    }
+    return u.toString().replace(/\?$/, "");
+  } catch {
+    return raw;
   }
+}
 
-  const postedAt = postedAtRaw ?? new Date().toISOString();
+/** Stable ID from the apply URL pathname (drops query/host noise). */
+function externalIdFor(url: string): string {
+  try {
+    const u = new URL(url);
+    return u.pathname.replace(/^\/+|\/+$/g, "");
+  } catch {
+    return url;
+  }
+}
 
-  return {
-    source: "himalayas",
-    externalId: externalIdRaw,
-    url,
-    title,
-    company,
-    description,
-    postedAt,
-    raw: item,
-  };
+/** Parse the prose response into one `JobRaw` per `---`-separated block. */
+function parseBlocks(text: string): JobRaw[] {
+  if (text.length === 0) return [];
+  const blocks = text.split(/\n-{3,}\n/u);
+  const out: JobRaw[] = [];
+  for (const block of blocks) {
+    const trimmed = block.trim();
+    if (trimmed.length === 0) continue;
+    const applyMatch = APPLY_RE.exec(trimmed);
+    const titleMatch = TITLE_RE.exec(trimmed);
+    const companyMatch = COMPANY_RE.exec(trimmed);
+    if (applyMatch === null || titleMatch === null || companyMatch === null) {
+      continue;
+    }
+    const url = cleanUrl(applyMatch[1] ?? "");
+    const title = (titleMatch[1] ?? "").trim();
+    const company = (companyMatch[1] ?? "").trim();
+    if (url.length === 0 || title.length === 0 || company.length === 0) {
+      continue;
+    }
+    out.push({
+      source: "himalayas",
+      externalId: externalIdFor(url),
+      url,
+      title,
+      company,
+      description: trimmed,
+      postedAt: new Date().toISOString(),
+      raw: { block: trimmed },
+    });
+  }
+  return out;
 }
